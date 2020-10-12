@@ -29,7 +29,7 @@ function bloodmallet_chart_import() {
   /**
    * Variable determines how many bars are visible
    */
-  const default_data_entries = 7;
+  const default_limit = 7;
 
   /**
    * Options:
@@ -74,6 +74,7 @@ function bloodmallet_chart_import() {
   /**
    * options:
    *   trinkets - default
+   *   races
    *   azerite_items_chest
    *   azerite_items_head
    *   azerite_items_shoulders
@@ -84,8 +85,6 @@ function bloodmallet_chart_import() {
 
   const default_azerite_tier = "all"
 
-  const default_corruption_representation = "dps";
-
   const default_language = "en";
 
   /******************************************************************************
@@ -95,7 +94,7 @@ function bloodmallet_chart_import() {
 
   const debug = false;
 
-  const path_to_data = "https://bloodmallet.com/json/";
+  const path_to_data = "https://dev.bloodmallet.com/chart/get/";
 
 
   /**
@@ -107,7 +106,8 @@ function bloodmallet_chart_import() {
    *          [wow_spec]: data
    *        }
    *      }
-   *    }
+   *    },
+   *    [chart_id]: data
    *  }
    */
   let loaded_data = {};
@@ -123,27 +123,47 @@ function bloodmallet_chart_import() {
       console.log("init_charts");
     }
     // scan for divs / what data is wanted
-    let chart_list = document.querySelectorAll("div.bloodmallet_chart, [data-bloodmallet='chart']");
+    let chart_list = document.querySelectorAll("div.bloodmallet_chart");
 
+    // check for unique IDs
+    let tmp_id_list = [];
     for (let i = 0; i < chart_list.length; i++) {
       const html_element = chart_list[i];
+      if (tmp_id_list.indexOf(html_element.id) > -1) {
+        console.error("Multiple Elements use the same ID ('" + html_element.id + "'). Aborting bloodmallet_chart_import.js.");
+        return;
+      } else {
+        tmp_id_list.push(html_element.id);
+      }
+    }
+
+    // collect data per chart
+    for (let i = 0; i < chart_list.length; i++) {
+      //const html_element = chart_list[i];
+      let html_id = undefined;
+      try {
+        html_id = chart_list[i].id;
+      } catch (error) {
+        console.error("Each .bloodmallet_chart needs an ID. Aborting bloodmallet_chart_import.js.");
+        return;
+      }
+      const html_element = document.getElementById(chart_list[i].id);
 
       if (html_element) {
 
-        var state = {
+        let state = {
+          chart_id: undefined,
           wow_class: undefined,
           wow_spec: undefined,
           data_type: default_data_type,
           azerite_tier: default_azerite_tier,
           fight_style: default_fight_style,
-          corruption_representation: default_corruption_representation,
-          filters: {},
           // style
           axis_color: default_axis_color,
           background_color: default_background_color,
           font_color: default_font_color,
           // settings
-          data_entries: default_data_entries,
+          limit: default_limit,
           chart_engine: default_chart_engine,
           tooltip_engine: default_tooltip_engine,
           language: default_language
@@ -161,7 +181,7 @@ function bloodmallet_chart_import() {
             state.font_color = bloodmallet.style.font_color;
           }
           if (bloodmallet.settings.entries !== undefined) {
-            state.data_entries = bloodmallet.settings.entries;
+            state.limit = bloodmallet.settings.entries;
           }
           if (bloodmallet.settings.chart_engine !== undefined) {
             state.chart_engine = bloodmallet.settings.chart_engine;
@@ -172,18 +192,15 @@ function bloodmallet_chart_import() {
           if (bloodmallet.settings.language !== undefined) {
             state.language = bloodmallet.settings.language;
           }
-          if (bloodmallet.settings.corruption_representation !== undefined) {
-            state.corruption_representation = bloodmallet.settings.corruption_representation;
-          }
         } catch (error) {
           if (debug) {
-            console.log("Applying page wide settings failed.");
+            console.log("Applying page wide settings failed or no page wide settings were found.");
           }
         }
 
         // optional input
         if (html_element.getAttribute("data-entries")) {
-          state.data_entries = html_element.getAttribute("data-entries");
+          state.limit = html_element.getAttribute("data-entries");
         }
         if (html_element.getAttribute("data-fight-style")) {
           state.fight_style = html_element.getAttribute("data-fight-style");
@@ -209,32 +226,26 @@ function bloodmallet_chart_import() {
         if (html_element.getAttribute("data-chart-engine")) {
           state.chart_engine = html_element.getAttribute("data-chart-engine");
         }
-        if (html_element.getAttribute("data-corruption-representation")) {
-          state.corruption_representation = html_element.getAttribute("data-corruption-representation");
-        }
         if (html_element.getAttribute("data-language")) {
           state.language = html_element.getAttribute("data-language");
         }
 
-        // filters (opt-out)
-        if (html_element.getAttribute("data-filter-essence-types")) {
-          state.filters.essence_types = html_element.getAttribute("data-filter-essence-types").split(";");
-        }
-
         // preparing necessary input to load data
         let requirements = true;
-        if (!html_element.getAttribute("data-wow-class")) {
-          console.error("Required 'data-wow-class' attribute wasn't found in the following element.")
-          console.log(html_element);
-          requirements = false;
+        if (!html_element.getAttribute("data-chart-id")) {
+          if (!html_element.getAttribute("data-wow-class")) {
+            console.error("Required 'data-chart-id' or 'data-wow-class' attribute wasn't found in " + html_id + ".")
+            requirements = false;
+          }
+          state.wow_class = html_element.getAttribute("data-wow-class");
+          if (!html_element.getAttribute("data-wow-spec")) {
+            console.error("Required 'data-chart-id' or 'data-wow-spec' attribute wasn't found in " + html_id + ".")
+            requirements = false;
+          }
+          state.wow_spec = html_element.getAttribute("data-wow-spec");
+        } else {
+          state.chart_id = html_element.getAttribute("data-chart-id");
         }
-        state.wow_class = html_element.getAttribute("data-wow-class");
-        if (!html_element.getAttribute("data-wow-spec")) {
-          console.error("Required 'data-wow-spec' attribute wasn't found in the following element.")
-          console.log(html_element);
-          requirements = false;
-        }
-        state.wow_spec = html_element.getAttribute("data-wow-spec");
 
         let styled_chart = update_chart_style(state);
 
@@ -242,59 +253,44 @@ function bloodmallet_chart_import() {
         let new_chart = false;
         if (state.chart_engine == "highcharts") {
           try {
-            new_chart = Highcharts.chart(html_element, styled_chart);
+            new_chart = Highcharts.chart(html_id, styled_chart);
           } catch (error) {
-            console.error("When trying to create a highcharts chart the following error occured. Did you include the necessary Highcharts scripts?");
+            console.log("When trying to create a highcharts chart the following error occured. Did you include the necessary Highcharts scripts?");
             console.log(error);
             return;
           }
         } else if (state.chart_engine == "highcharts_old") {
           try {
             let tmp_styled_chart = styled_chart;
-            tmp_styled_chart["chart"]["renderTo"] = html_element;
+            tmp_styled_chart["chart"]["renderTo"] = html_id;
             new_chart = new Highcharts.Chart(tmp_styled_chart);
           } catch (error) {
-            console.error("When trying to create a highcharts_old chart the following error occured. Did you include the necessary Highcharts scripts?");
+            console.log("When trying to create a highcharts_old chart the following error occured. Did you include the necessary Highcharts scripts?");
             console.log(error);
             return;
           }
         }
 
         if (requirements) {
-          let error = load_data(state);
-          if (error === true) {
-            new_chart.setTitle(
-              { // title
-                text: "Connection error"
-              },
-              { // subtitle
-                text: "Establishing a connection to bloodmallet.com failed. Is the website blocked?"
-              },
-              false
-            );
-          } else {
-            setTimeout(update_chart, 0, state, html_element, new_chart, 0);
-          }
+          load_data(state);
         } else {
           requirements_error(new_chart);
         }
 
+        setTimeout(update_chart, 1, state, html_element, new_chart, 0);
       }
     }
   }
 
   /**
    *
-   * @param {string} data_type what kind of data will be looked for
-   * @param {string} wow_class wow class name
-   * @param {string} wow_spec wow spec name
-   * @param {string} fight_style simc baseline fight style
    */
   function load_data(state) {
     if (debug) {
       console.log("load_data");
     }
 
+    let chart_id = state.chart_id;
     let data_type = state.data_type;
     let fight_style = state.fight_style;
     let wow_class = state.wow_class;
@@ -310,6 +306,15 @@ function bloodmallet_chart_import() {
         console.log("Data needs to be loaded.");
       }
     }
+    try {
+      if (loaded_data[chart_id]) {
+        return;
+      }
+    } catch (error) {
+      if (debug) {
+        console.log("Data needs to be loaded.");
+      }
+    }
 
     let data_group = data_type;
 
@@ -318,38 +323,43 @@ function bloodmallet_chart_import() {
       data_group = "azerite_traits";
     }
 
-    let data_name = wow_class;
-    data_name += "_" + wow_spec;
-    if (data_type.indexOf("azerite_items") > -1) {
-      data_name += data_type.replace("azerite_items", "");
-    }
-    data_name += "_" + fight_style;
-    data_name += ".json";
+    let data_name = fight_style;
+    data_name += "/" + wow_class;
+    data_name += "/" + wow_spec;
 
-    if (debug) {
-      console.log("Fetching data from: " + path_to_data + data_group + "/" + data_name);
+    let url = "";
+    if (chart_id) {
+      url = path_to_data + chart_id;
+    } else {
+      url = path_to_data + data_group + "/" + data_name;
     }
-
 
     let request = new XMLHttpRequest();
-    request.open("GET", path_to_data + data_group + "/" + data_name + "?" + (new Date()).getTime(), true); // async request
+    if (debug) {
+      console.log("Fetching data from: " + url);
+    }
+    request.open("GET", url, true); // async request
 
     request.onload = function (e) {
       if (request.readyState === 4) {
         if (request.status === 200) {
           let json = JSON.parse(request.responseText);
 
-          if (!loaded_data[data_type]) {
-            loaded_data[data_type] = {};
-          }
-          if (!loaded_data[data_type][fight_style]) {
-            loaded_data[data_type][fight_style] = {};
-          }
-          if (!loaded_data[data_type][fight_style][wow_class]) {
-            loaded_data[data_type][fight_style][wow_class] = {};
-          }
+          if (chart_id) {
+            loaded_data["c" + chart_id] = json;
+          } else {
+            if (!loaded_data[data_type]) {
+              loaded_data[data_type] = {};
+            }
+            if (!loaded_data[data_type][fight_style]) {
+              loaded_data[data_type][fight_style] = {};
+            }
+            if (!loaded_data[data_type][fight_style][wow_class]) {
+              loaded_data[data_type][fight_style][wow_class] = {};
+            }
 
-          loaded_data[data_type][fight_style][wow_class][wow_spec] = json;
+            loaded_data[data_type][fight_style][wow_class][wow_spec] = json;
+          }
           if (debug) {
             console.log(json);
             console.log("Load and save finished.");
@@ -359,13 +369,10 @@ function bloodmallet_chart_import() {
         }
       }
     };
-    let error = false;
     request.onerror = function (e) {
       console.error('Fetching data from bloodmallet.com encountered an error, ', e);
-      error = true;
     };
     request.send(null);
-    return error;
   }
 
   /**
@@ -373,29 +380,68 @@ function bloodmallet_chart_import() {
    */
   function update_chart(state, html_element, chart, count) {
     if (debug) {
-      console.log("update_charts");
+      console.log("update_chart");
     }
 
+    let chart_id = state.chart_id;
     let data_type = state.data_type;
     let fight_style = state.fight_style;
     let wow_class = state.wow_class;
     let wow_spec = state.wow_spec;
-    let data_entries = state.data_entries;
+    let limit = state.limit;
     let chart_engine = state.chart_engine;
 
-    try {
-      var spec_data = loaded_data[data_type][fight_style][wow_class][wow_spec];
-    } catch (error) {
-      // console.warn("Data for ", data_type, fight_style, wow_class, wow_spec, " wasn't loaded yet. Either chart setup is wrong, connection to bloodmallet.com is slow or failed.");
-      if (count < 10) {
-        setTimeout(update_chart, 100, state, html_element, chart, count + 1);
+    let spec_data = false;
+
+    // early exits if data is missing
+    if (chart_id) {
+      if (loaded_data["c" + chart_id] === undefined) {
+        if (count < 30) {
+          setTimeout(update_chart, 200, state, html_element, chart, count + 1);
+        }
+        return;
       }
-      return;
+    } else {
+      try {
+        spec_data = loaded_data[data_type][fight_style][wow_class][wow_spec];
+      } catch (error) {
+        if (count < 30) {
+          setTimeout(update_chart, 200, state, html_element, chart, count + 1);
+        }
+        return;
+      }
     }
+
+    if (chart_id !== undefined) {
+      spec_data = loaded_data["c" + chart_id];
+    } else {
+      spec_data = loaded_data[data_type][fight_style][wow_class][wow_spec];
+    }
+    if (spec_data["error"] === true) {
+      return simulation_error(html_element, spec_data);
+    } else {
+      wow_class = spec_data['simc_settings']['class'];
+      wow_spec = spec_data['simc_settings']['spec'];
+      fight_style = spec_data['simc_settings']['fight_style'];
+    }
+    state.data_type = data_type = spec_data["data_type"];
+
+    // do secondary distribution charts in a different function
+    if (data_type === "secondary_distributions") {
+      return update_secondary_distribution_chart(state, html_element, chart);
+    }
+
+    if (spec_data['data_type'] === 'azerite_traits') {
+      if (data_type.indexOf('azerite_items') === -1) {
+        data_type = "azerite_traits_stacking";
+      }
+    } else {
+      data_type = spec_data['data_type'];
+    }
+
     const data = spec_data;
 
-    // Azerite Trait stacking and Corruption representation dps/rating use the
-    // second sorted data key list
+    // Azerite Trait stacking uses the second sorted data key list
     let dps_ordered_keys;
     let baseline_dps;
     if (data_type.indexOf("azerite_traits") > -1) {
@@ -403,22 +449,22 @@ function bloodmallet_chart_import() {
       if (data_type === "azerite_traits_stacking") {
 
         if (state.azerite_tier === "all") {
-          dps_ordered_keys = data["sorted_data_keys_2"].slice(0, data["sorted_data_keys_2"].length);
+          dps_ordered_keys = data["sorted_data_keys_2"].slice(0, limit);
         } else if (state.azerite_tier === "1" || state.azerite_tier === "3") {
-          dps_ordered_keys = data["sorted_azerite_tier_3_trait_stacking"].slice(0, data["sorted_azerite_tier_3_trait_stacking"].length);
+          dps_ordered_keys = data["sorted_azerite_tier_3_trait_stacking"].slice(0, limit);
         } else if (state.azerite_tier === "2") {
-          dps_ordered_keys = data["sorted_azerite_tier_2_trait_stacking"].slice(0, data["sorted_azerite_tier_2_trait_stacking"].length);
+          dps_ordered_keys = data["sorted_azerite_tier_2_trait_stacking"].slice(0, limit);
         }
         baseline_dps = data["data"]["baseline"][data["simulated_steps"][0]];
 
       } else if (data_type === "azerite_traits_itemlevel") {
 
         if (state.azerite_tier === "all") {
-          dps_ordered_keys = data["sorted_data_keys"].slice(0, data["sorted_data_keys"].length);
+          dps_ordered_keys = data["sorted_data_keys"].slice(0, limit);
         } else if (state.azerite_tier === "1" || state.azerite_tier === "3") {
-          dps_ordered_keys = data["sorted_azerite_tier_3_itemlevel"].slice(0, data["sorted_azerite_tier_3_itemlevel"].length);
+          dps_ordered_keys = data["sorted_azerite_tier_3_itemlevel"].slice(0, limit);
         } else if (state.azerite_tier === "2") {
-          dps_ordered_keys = data["sorted_azerite_tier_2_itemlevel"].slice(0, data["sorted_azerite_tier_2_itemlevel"].length);
+          dps_ordered_keys = data["sorted_azerite_tier_2_itemlevel"].slice(0, limit);
         }
         baseline_dps = data["data"]["baseline"][data["simulated_steps"][data["simulated_steps"].length - 1]];
 
@@ -427,14 +473,11 @@ function bloodmallet_chart_import() {
         return;
       }
 
-    } else if (data_type === "corruptions" && state.corruption_representation === "dps/rating") {
-      dps_ordered_keys = data["sorted_data_keys_2"].slice(0, data["sorted_data_keys_2"].length);
-      baseline_dps = data["data"]["baseline"][data["simulated_steps"][0]];
     } else {
-      dps_ordered_keys = data["sorted_data_keys"].slice(0, data["sorted_data_keys"].length);
+      dps_ordered_keys = data["sorted_data_keys"].slice(0, limit);
       if (data_type === "races") {
         baseline_dps = 0;
-      } else if (data_type === "essence_combinations") {
+      } else if (["legendaries", "soul_binds"].includes(data_type)) {
         baseline_dps = data["data"]["baseline"];
       } else {
         baseline_dps = data["data"]["baseline"][data["simulated_steps"][data["simulated_steps"].length - 1]];
@@ -446,40 +489,6 @@ function bloodmallet_chart_import() {
       console.log("Baseline dps: " + baseline_dps);
     }
 
-    let simulated_steps = [];
-    if (data_type === "azerite_traits_stacking") {
-      let base_ilevel = data["simulated_steps"][0].replace("1_", "");
-      simulated_steps.push("3_" + base_ilevel);
-      simulated_steps.push("2_" + base_ilevel);
-      simulated_steps.push("1_" + base_ilevel);
-    } else {
-      simulated_steps = data["simulated_steps"];
-    }
-    if (debug) {
-      console.log("simulated_steps: " + simulated_steps);
-    }
-
-    // Applying filters
-    if (data_type === "essences") {
-      purge_list = [];
-      for (let essence of dps_ordered_keys) {
-        // filter essence types
-        // if it's a major + minor essence, so no "minor" name addition
-        if (state.filters.hasOwnProperty("essence_types")) {
-          if (state.filters.essence_types.indexOf('minor') > -1 && essence.indexOf(' minor') > -1) {
-            purge_list.push(essence);
-          } else if (state.filters.essence_types.indexOf('combined') > -1 && essence.indexOf(' minor') === -1) {
-            purge_list.push(essence);
-          }
-        }
-      }
-      for (let essence_name of purge_list) {
-        dps_ordered_keys.splice(dps_ordered_keys.indexOf(essence_name), 1);
-      }
-    }
-
-    // final purge based on list length
-    dps_ordered_keys = dps_ordered_keys.slice(0, data_entries);
 
     // set title and subtitle
     chart.setTitle(
@@ -497,19 +506,14 @@ function bloodmallet_chart_import() {
       chart.series[0].remove(false);
     }
 
-    // update categories
-    let category_list = [];
-
-    for (let i = 0; i < dps_ordered_keys.length; i++) {
-      let dps_key = dps_ordered_keys[i];
-      category_list.push(get_category_name(state, dps_key, data));
-    }
+    let category_list = dps_ordered_keys
+      .map(element => get_category_name(state, element, data));
 
     if (debug) {
       console.log(category_list);
     }
 
-    // rewrite category names
+    // rewrite the trinket names
     if (chart_engine == "highcharts") {
       chart.update({
         xAxis: {
@@ -520,113 +524,49 @@ function bloodmallet_chart_import() {
       chart.xAxis[0].setCategories(category_list, false);
     }
 
+    let simulated_steps = [];
+    if (data_type == "azerite_traits_stacking") {
+      let base_ilevel = data["simulated_steps"][0].replace("1_", "");
+      simulated_steps.push("3_" + base_ilevel);
+      simulated_steps.push("2_" + base_ilevel);
+      simulated_steps.push("1_" + base_ilevel);
+    } else {
+      simulated_steps = data["simulated_steps"];
+    }
+    if (debug) {
+      console.log("simulated_steps: " + simulated_steps);
+    }
+
     if (simulated_steps) {
-      // all itemlevels/stacks/simulated steps
-      for (let simulation_step_position = 0; simulation_step_position < simulated_steps.length; simulation_step_position++) {
 
-        let simulation_step = simulated_steps[simulation_step_position];
-        var dps_array = [];
-
-        // all items/traits/ordered keys
-        for (let i = 0; i < dps_ordered_keys.length; i++) {
-          simulation_step = simulated_steps[simulation_step_position];
-          // create copy of simulated_steps to work with internally (some traits don't have the max simulated_step)
-          let tmp_simulation_steps = simulated_steps.slice();
-          let dps_key = dps_ordered_keys[i];
-
-          let dps_key_values = data["data"][dps_key];
-
-          // use max simulation_step for the trait stacking chart
-          if (data_type === "azerite_traits_stacking") {
-            baseline_dps = data["data"]["baseline"][data["simulated_steps"][0]];
+      let tmp_dps_values = {};
+      for (const name in data["data"]) {
+        if (data["data"].hasOwnProperty(name)) {
+          const information = data["data"][name];
+          tmp_dps_values[name] = {};
+          let previous_value = baseline_dps;
+          if (data_type === "conduits") {
+            previous_value = data["data"]["baseline"][data["covenant_mapping"][name]];
           }
-          // use current simulation step as baseline for corruptions
-          else if (data_type === "corruptions") {
-            baseline_dps = data["data"]["baseline"][simulation_step];
-          } else {
-            baseline_dps = data["data"]["baseline"][data["simulated_steps"][data["simulated_steps"].length - 1]];
-          }
-
-          // special handling of azerite_stacking chart to account for traits not simmed at max simulation_step or without max stacks
-          if (data_type === "azerite_traits_stacking" && dps_key_values[simulation_step] === undefined) {
-
-            // find max available simulated step instead
-            let available_steps = data["simulated_steps"];
-            let max_step = undefined;
-
-            // comparing descending simulated_steps until we find the highest possible simulated_step
-            for (let broken_id = 0; broken_id < available_steps.length; broken_id++) {
-
-              const available_step = available_steps[broken_id];
-
-              if (!max_step && data["data"][dps_key][available_step]) {
-                max_step = available_step;
-              }
-            }
-            max_step = max_step.replace("1_", "");
-
-            // fix tmp_simulation_steps to match this trait
-            tmp_simulation_steps = [];
-            for (let step of simulated_steps) {
-              tmp_simulation_steps.push(step.split("_")[0] + "_" + max_step);
-            }
-
-            // reset baseline dps to max available simulation step
-            baseline_dps = data["data"]["baseline"]["1_" + max_step];
-
-            // reset simulation_step to the actually available simulation_step
-            simulation_step = simulation_step.split("_")[0] + "_" + max_step;
-          }
-
-          // check for zero dps values and don't change them
-          if (Number(dps_key_values[simulation_step]) > 0) {
-
-            // if lowest simulation_step is looked at, substract baseline
-            if (simulation_step_position === simulated_steps.length - 1) {
-
-              if (simulation_step in dps_key_values) {
-                if (data_type === "corruptions" && state.corruption_representation === "dps/rating") {
-                  dps_array.push((dps_key_values[simulation_step] - baseline_dps) / data["corruption_rating"][dps_key]);
-                } else {
-                  dps_array.push(dps_key_values[simulation_step] - baseline_dps);
-                }
-              } else {
-                dps_array.push(0);
-              }
-
-            } else { // else substract lower simulation_step value of same item
-
-              if (data_type === "corruptions" && state.corruption_representation === "dps/rating") {
-                let full_value = (dps_key_values[simulation_step] - baseline_dps) / data["corruption_rating"][dps_key];
-                let next_itemlevel = tmp_simulation_steps[String(Number(simulation_step_position) + 1)];
-                let lower_value = (dps_key_values[next_itemlevel] - data["data"]["baseline"][next_itemlevel]) / data["corruption_rating"][dps_key];
-
-                dps_array.push(full_value - lower_value);
-
-              } else if (data_type === "corruptions") {
-                let full_value = dps_key_values[simulation_step] - baseline_dps;
-                let next_itemlevel = tmp_simulation_steps[String(Number(simulation_step_position) + 1)];
-                let lower_value = dps_key_values[next_itemlevel] - data["data"]["baseline"][next_itemlevel];
-
-                dps_array.push(full_value - lower_value);
-              }
-              // if lower simulation_step is zero we have to assume that this item needs to be compared now to the baseline
-              else if (dps_key_values[tmp_simulation_steps[String(Number(simulation_step_position) + 1)]] === 0 || !(tmp_simulation_steps[String(Number(simulation_step_position) + 1)] in dps_key_values)) {
-                dps_array.push(dps_key_values[simulation_step] - baseline_dps);
-
-              } else { // standard case, next simulation_step is not zero and can be used to substract from the current value
-                dps_array.push(dps_key_values[simulation_step] - dps_key_values[tmp_simulation_steps[String(Number(simulation_step_position) + 1)]]);
-              }
-
-            }
-
-          } else {
-            if (simulation_step in dps_key_values) {
-              dps_array.push(dps_key_values[simulation_step]);
+          for (let i = simulated_steps.length - 1; i >= 0; i--) {
+            const step = simulated_steps[i];
+            if (information.hasOwnProperty(step)) {
+              tmp_dps_values[name][step] = information[step] - previous_value;
+              previous_value = information[step];
             } else {
-              dps_array.push(0);
+              tmp_dps_values[name][step] = 0;
             }
           }
+        }
+      }
+
+      for (const simulation_step of simulated_steps) {
+
+        let dps_array = [];
+
+        for (let i = 0; i < dps_ordered_keys.length; i++) {
+          const dps_key = dps_ordered_keys[i];
+          dps_array.push(tmp_dps_values[dps_key][simulation_step]);
         }
 
         let simulation_step_clean = simulation_step;
@@ -639,93 +579,407 @@ function bloodmallet_chart_import() {
         chart.addSeries({
           data: dps_array,
           name: simulation_step_clean,
-          showInLegend: true
         }, false);
 
       }
-    } else { // race + essence combination simulations + corruptions dps/rating
+    } else if (["legendaries", "soul_binds"].includes(data_type)) {
       var dps_array = [];
 
       for (let i = 0; i < dps_ordered_keys.length; i++) {
         let dps_key = dps_ordered_keys[i];
 
-        // extracting correct dps value
-        let dps_key_value = 0;
-        if (data_type === "corruptions" && state.corruption_representation === "dps/rating") {
+        let dps_key_values = data["data"][dps_key] - baseline_dps;
 
-          let corruption_name = "";
-          let corruption_rank = "";
-          if (isNaN(parseInt(dps_key.slice(dps_key.length - 1, dps_key.length)))) {
-            // new format
-            corruption_name = dps_key;
-            let ranks = Object.keys(data["corruption_rating"][corruption_name]);
-            corruption_rank = ranks.sort()[ranks.length - 1];
-          } else {
-            // old format
-            // Structure: "Strikethrough 2" "NAME RANK", with rank being one digit
-            corruption_name = dps_key.slice(0, dps_key.length - 2);
-            corruption_rank = dps_key.slice(dps_key.length - 1, dps_key.length);
-          }
-
-          let dps = data["data"][corruption_name][corruption_rank];
-
-          dps_key_value = (dps - baseline_dps) / data["corruption_rating"][corruption_name][corruption_rank];
-        } else {
-          dps_key_value = data["data"][dps_key];
-        }
-
-        dps_array.push(dps_key_value);
-      }
-
-      let name = "";
-      if (data_type === "races") {
-        name = "Race";
+        dps_array.push(dps_key_values);
       }
 
       chart.addSeries({
         data: dps_array,
-        name: name,
+        name: "Data",
+        showInLegend: false
+      }, false);
+
+    } else { // race simulations
+      var dps_array = [];
+
+      for (let i = 0; i < dps_ordered_keys.length; i++) {
+        let dps_key = dps_ordered_keys[i];
+
+        let dps_key_values = data["data"][dps_key];
+
+        dps_array.push(dps_key_values);
+      }
+
+      chart.addSeries({
+        data: dps_array,
+        name: "Race",
         showInLegend: true
       }, false);
 
     }
 
     // add new legend title
-    if ("trinkets" == data_type || "azerite_items_chest" == data_type || "azerite_items_head" == data_type || "azerite_items_shoulders" == data_type || "azerite_traits_itemlevel" == data_type) {
+    if (["trinkets", "azerite_items_chest", "azerite_items_head", "azerite_items_shoulders", "azerite_traits_itemlevel"].indexOf(data_type) > -1) {
       chart.legend.title.attr({ text: "Itemlevel" });
     } else if (data_type === "races") {
       chart.legend.title.attr({ text: "" });
     } else if (data_type === "azerite_traits_stacking") {
       chart.legend.title.attr({ text: "Trait count" });
-    } else if (data_type === "essences" || (data_type === "corruptions" && state.corruption_representation === "dps")) {
-      chart.legend.title.attr({ text: "Rank" });
-    } else {
-      chart.legend.title.attr({ text: "" });
     }
 
-    // update axis name
-    if (data_type === "corruptions" && state.corruption_representation === "dps/rating") {
-      chart.yAxis[1].setTitle({
-        text: '\u0394 Damage per second / corruption rating'
-      });
-      // not sure what the first yAxis actually does
-      chart.yAxis[0].setTitle({
-        text: '\u0394 Damage per second / corruption rating'
-      });
+    chart.redraw();
+    if (chart_engine == "highcharts_old") {
+      chart.reflow();
     }
 
     html_element.style.height = 200 + dps_ordered_keys.length * 30 + "px";
     if (chart_engine == "highcharts") {
       chart.setSize(html_element.style.width, html_element.style.height);
     }
-    chart.redraw();
-    if (chart_engine == "highcharts_old") {
-      chart.reflow();
-    }
 
     // add wowdb tooltips, they don't check dynamically
     if (state.tooltip_engine == "wowdb") {
       setTimeout(function () { readd_wowdb_tooltips(html_element.id); }, 1);
+    }
+  }
+
+  function simulation_error(html_element, error_response) {
+    let element = html_element;
+    element.innerHTML = "";
+
+    let information = document.createElement('p');
+    information.innerText = "An error occured during simulation.";
+    element.appendChild(information);
+
+    let list = document.createElement('ul');
+
+    let title = document.createElement('li');
+    title.textContent = "Title: " + (error_response["title"] ? error_response["title"] : '~');
+    list.appendChild(title);
+
+    let spec = document.createElement('li');
+    spec.textContent = "Spec: " + error_response["wow_spec"] + " " + error_response["wow_class"];
+    list.appendChild(spec);
+
+    let type = document.createElement('li');
+    type.textContent = "Type: " + error_response["simulation_type"];
+    list.appendChild(type);
+
+    let fight_style = document.createElement('li');
+    fight_style.textContent = "Fight style: " + error_response["fight_style"];
+    list.appendChild(fight_style);
+
+    let simulation_id = document.createElement('li');
+    simulation_id.textContent = "ID: " + error_response["id"];
+    list.appendChild(simulation_id);
+
+    let custom_profile = document.createElement('li');
+    custom_profile.textContent = "Custom profile:";
+    list.appendChild(custom_profile);
+    custom_profile.appendChild(document.createElement('br'));
+    let profile = document.createElement('textarea');
+    profile.readOnly = true;
+    profile.value = error_response["custom_profile"];
+    profile.placeholder = "No custom profile";
+    profile.style.width = "100%";
+    custom_profile.appendChild(profile);
+
+    let log_item = document.createElement('li');
+    log_item.textContent = "Log:";
+    list.appendChild(log_item);
+    log_item.appendChild(document.createElement('br'));
+    let log = document.createElement('textarea');
+    log.readOnly = true;
+    log.value = error_response["log"];
+    log.placeholder = "No log available";
+    log.style.width = "100%";
+    log_item.appendChild(log);
+
+    element.appendChild(list);
+  }
+
+  function update_secondary_distribution_chart(state, html_element, chart) {
+    if (debug) {
+      console.log("update_secondary_distribution_chart");
+    }
+
+    let html_id = html_element.id;
+
+    let chart_id = state.chart_id;
+    let fight_style = state.fight_style;
+    let wow_class = state.wow_class;
+    let wow_spec = state.wow_spec;
+    let chart_engine = state.chart_engine;
+
+    let spec_data = false;
+    spec_data = loaded_data["c" + chart_id];
+
+    wow_class = spec_data['simc_settings']['class'];
+    wow_spec = spec_data['simc_settings']['spec'];
+    fight_style = spec_data['simc_settings']['fight_style'];
+
+
+    let styled_chart = update_chart_style(state);
+
+    // create new chart without data
+    let new_chart = false;
+    if (state.chart_engine == "highcharts") {
+      try {
+        new_chart = Highcharts.chart(html_id, styled_chart);
+      } catch (error) {
+        console.log("When trying to create a highcharts chart the following error occured. Did you include the necessary Highcharts scripts?");
+        console.log(error);
+        return;
+      }
+    } else if (state.chart_engine == "highcharts_old") {
+      try {
+        let tmp_styled_chart = styled_chart;
+        tmp_styled_chart["chart"]["renderTo"] = html_id;
+        new_chart = new Highcharts.Chart(tmp_styled_chart);
+      } catch (error) {
+        console.log("When trying to create a highcharts_old chart the following error occured. Did you include the necessary Highcharts scripts?");
+        console.log(error);
+        return;
+      }
+    }
+
+    chart = undefined;
+    chart = new_chart;
+
+    let talent_combination = undefined;
+    talent_combination = Object.keys(spec_data["data"])[0];
+
+    // get max dps of the whole data set
+    let max_dps = spec_data["data"][talent_combination][spec_data["sorted_data_keys"][talent_combination][0]];
+    // get min dps of the whole data set
+    let min_dps = spec_data["data"][talent_combination][spec_data["sorted_data_keys"][talent_combination][spec_data["sorted_data_keys"][talent_combination].length - 1]];
+
+    // prepare series with standard data
+    let max_color = create_color(100, 0, 100);
+    let min_color = create_color(0, 0, 100);
+    let series = {
+      name: Intl.NumberFormat().format(max_dps) + " DPS",
+      color: "rgb(" + max_color[0] + "," + max_color[1] + "," + max_color[2] + ")",
+      data: []
+    };
+
+    // add a marker for each distribution in the data set
+    for (let distribution of Object.keys(spec_data["data"][talent_combination])) {
+      // console.log(distribution);
+
+      let talent_data_distribution = spec_data["data"][talent_combination][distribution];
+
+      // get the markers color
+      let color_set = create_color(
+        talent_data_distribution,
+        min_dps,
+        max_dps
+      );
+
+      // width of the border of the marker, 0 for all markers but the max, which gets 3
+      let line_width = 1;
+      let line_color = "#232227";
+      // adjust marker radius depending on distance to max
+      // worst dps: 2
+      // max dps: 5 (increased to 8 to fit the additional border)
+      let radius = 5; //2 + 3 * (talent_data_distribution - min_dps) / (max_dps - min_dps);
+      if (max_dps === talent_data_distribution) {
+        line_width = 3;
+        radius = 8;
+        line_color = state.font_color;
+      }
+
+      // undefined data label for all markers unless they are the "max" values
+      let data_label = undefined;
+
+      // 70 is the max possible value in data. would need adjustement if data changes to other max values. But I doubt this'll happen.
+      if (distribution.indexOf("70") > -1) {
+        data_label = {
+          enabled: true,
+          allowOverlap: true,
+        };
+
+        switch (distribution.indexOf("70")) {
+          case 0: // "70_10_10_10"
+            data_label.format = "Crit";
+            data_label.verticalAlign = "top";
+            break;
+          case 3: // "10_70_10_10"
+            data_label.format = "Haste";
+            break;
+          case 6: // "10_10_70_10"
+            data_label.format = "Mastery";
+            data_label.verticalAlign = "top";
+            break;
+          case 9: // "10_10_10_70"
+            data_label.format = "Versatility";
+            data_label.verticalAlign = "top";
+            break;
+
+          default:
+            // how did we even end up here?
+            break;
+        }
+      }
+      const secondary_sum = spec_data["secondary_sum"];
+
+      let crit = parseInt(distribution.split("_")[0]);
+      let haste = parseInt(distribution.split("_")[1]);
+      let mastery = parseInt(distribution.split("_")[2]);
+      let versatility = parseInt(distribution.split("_")[3]);
+
+      // push marker data into the series
+      series.data.push({
+        // formulas slowly snailed together from combining different relations within https://en.wikipedia.org/wiki/Equilateral_triangle and https://en.wikipedia.org/wiki/Pythagorean_theorem
+        x: ((Math.sqrt(3) / 2) * (crit + (1 / 3) * haste)),
+        y: (Math.sqrt(2 / 3) * haste),
+        z: (mastery + 0.5 * crit + 0.5 * haste),
+
+        name: distribution,
+        // flat markers with dark border (borders are prepared further up)
+        color: "rgb(" + color_set[0] + "," + color_set[1] + "," + color_set[2] + ")",
+
+        // add additional information required for tooltips
+        dps: talent_data_distribution,
+        dps_max: max_dps,
+        dps_min: min_dps,
+        stat_crit: crit * secondary_sum / 100,
+        stat_haste: haste * secondary_sum / 100,
+        stat_mastery: mastery * secondary_sum / 100,
+        stat_vers: versatility * secondary_sum / 100,
+        stat_sum: secondary_sum,
+        // add marker information
+        marker: {
+          radius: radius,
+          lineColor: line_color,
+          lineWidth: line_width
+        },
+        // add visible data labels (crit, haste, mastery, vers)
+        dataLabels: data_label,
+      });
+    }
+
+    // delete all old series data
+    while (chart.series[0]) {
+      chart.series[0].remove(false);
+    }
+
+    chart.addSeries(series, false);
+    // make sure this color matches the value of color_min in create_color(...)
+    chart.addSeries({ name: Intl.NumberFormat().format(min_dps) + " DPS", color: "rgb(" + min_color[0] + "," + min_color[1] + "," + min_color[2] + ")" }, false);
+
+
+    let timestamp = spec_data["timestamp"];
+    let year = timestamp.split("-")[0];
+    let month = timestamp.split("-")[1];
+    let day = timestamp.split("-")[2].split(" ")[0];
+    let hour = timestamp.split(" ")[1].split(":")[0];
+    let minute = timestamp.split(":")[1];
+
+    let subtitle = "Last updated ";
+    // month is a number 0-11
+    let age = new Date() - new Date(Date.UTC(year, month - 1, day, hour, minute));
+    let age_days = Math.floor(age / 24 / 3600 / 1000);
+    if (age_days > 0) {
+      subtitle += `${age_days}d `;
+    }
+    let age_hours = Math.floor(age / 3600 / 1000) - age_days * 24;
+    subtitle += `${age_hours}h ago`;
+
+    // try {
+    //   document.getElementById("chart_title").innerHTML = "";
+    //   document.getElementById("chart_title").hidden = true;
+    //   add_profile_information();
+    //   document.getElementById("chart_subtitle").innerHTML = subtitle;
+    //   document.getElementById("chart_simc_hash").innerHTML = `SimulationCraft build: <a href=\"https://github.com/simulationcraft/simc/commit/${spec_data["simc_settings"]["simc_hash"]}\" target=\"blank\">#${spec_data["simc_settings"]["simc_hash"].substring(0, 5)}</a>`;
+    // } catch (error) {
+
+    // }
+
+    chart.redraw();
+
+    // Add mouse and touch events for rotation
+    (function (H) {
+      function dragStart(eStart) {
+        eStart = chart.pointer.normalize(eStart);
+
+        var posX = eStart.chartX,
+          posY = eStart.chartY,
+          alpha = chart.options.chart.options3d.alpha,
+          beta = chart.options.chart.options3d.beta,
+          sensitivity = 5; // lower is more sensitive
+
+        function drag(e) {
+          // Get e.chartX and e.chartY
+          e = chart.pointer.normalize(e);
+
+          chart.update({
+            chart: {
+              options3d: {
+                alpha: alpha + (e.chartY - posY) / sensitivity,
+                beta: beta + (posX - e.chartX) / sensitivity
+              }
+            }
+          }, undefined, undefined, false);
+        }
+
+        chart.unbindDragMouse = H.addEvent(document, 'mousemove', drag);
+        chart.unbindDragTouch = H.addEvent(document, 'touchmove', drag);
+
+        H.addEvent(document, 'mouseup', chart.unbindDragMouse);
+        H.addEvent(document, 'touchend', chart.unbindDragTouch);
+      }
+
+      H.addEvent(chart.container, 'mousedown', dragStart);
+      H.addEvent(chart.container, 'touchstart', dragStart);
+    }(Highcharts));
+  }
+
+  /**
+   *  Creates the rgb color array for the dps of a marker.
+   *
+   * @param {Int} dps
+   * @param {Int} min_dps
+   * @param {Int} max_dps
+   */
+  function create_color(dps, min_dps, max_dps) {
+    if (debug)
+      console.log("create_color");
+
+    // color of lowest DPS
+    let color_min = [0, 255, 255];
+    // additional color step between min and max
+    let color_mid = [255, 255, 0];
+    // color of  max dps
+    let color_max = [255, 0, 0];
+
+    // calculate the position of the mid color in this relation to ensure a smooth color transition (color distance...if something like this exists) between the three
+    let diff_mid_max = 0;
+    let diff_min_mid = 0;
+    for (let i = 0; i < 3; i++) {
+      diff_mid_max += Math.abs(color_max[i] - color_mid[i]);
+      diff_min_mid += Math.abs(color_mid[i] - color_min[i]);
+    }
+    // ratio from min to max to describe the position of the id color
+    let mid_ratio = diff_min_mid / (diff_min_mid + diff_mid_max);
+    // mid dps resulting from the ratio
+    let mid_dps = min_dps + (max_dps - min_dps) * mid_ratio;
+
+    // calculate color based on relative dps
+    if (dps >= mid_dps) {
+      let percent_of_max = (dps - mid_dps) / (max_dps - mid_dps);
+      return [
+        Math.floor(color_max[0] * percent_of_max + color_mid[0] * (1 - percent_of_max)),
+        Math.floor(color_max[1] * percent_of_max + color_mid[1] * (1 - percent_of_max)),
+        Math.floor(color_max[2] * percent_of_max + color_mid[2] * (1 - percent_of_max))
+      ];
+    } else {
+      let percent_of_mid = (dps - min_dps) / (mid_dps - min_dps);
+      return [
+        Math.floor(color_mid[0] * percent_of_mid + color_min[0] * (1 - percent_of_mid)),
+        Math.floor(color_mid[1] * percent_of_mid + color_min[1] * (1 - percent_of_mid)),
+        Math.floor(color_mid[2] * percent_of_mid + color_min[2] * (1 - percent_of_mid))
+      ];
     }
   }
 
@@ -752,7 +1006,6 @@ function bloodmallet_chart_import() {
     if (debug) {
       console.log("get_category_name");
       console.log(key);
-      console.log(data);
     }
 
     const language_table = {
@@ -771,35 +1024,28 @@ function bloodmallet_chart_import() {
     // wowhead, wowdb, or plain text if no matching origin is provided
 
     // fallback
-    if (state.tooltip_engine !== "wowhead" && state.tooltip_engine !== "wowdb") {
+    if (state.tooltip_engine != "wowhead" && state.tooltip_engine != "wowdb") {
       try {
-        return data["languages"][key][language_table[state.language]];
+        return data["translations"][key][language_table[state.language]];
       } catch (error) {
-        return key;
+        return data["languages"][key][language_table[state.language]];
       }
     }
 
     // races don't have links/tooltips
     if (state.data_type === "races") {
       try {
-        return data["languages"][key][language_table[state.language]];
+        return data["translations"][key][language_table[state.language]];
       } catch (error) {
-        return key;
+        return data["languages"][key][language_table[state.language]];
       }
     }
 
     // wowhead
-    if (state.tooltip_engine === "wowhead") {
+    if (state.tooltip_engine == "wowhead") {
       let a = document.createElement("a");
       a.href = "https://" + (state.language === "en" ? "www" : state.language) + ".wowhead.com/";
-      if (data.hasOwnProperty("power_ids") && (data["power_ids"].hasOwnProperty(key) || data["power_ids"].hasOwnProperty(key.split(" +")[0]))) {
-        if (data["power_ids"].hasOwnProperty(key)) {
-          a.href += "azerite-essence-power/" + data["power_ids"][key];
-        } else if (data["power_ids"].hasOwnProperty(key.split(" +")[0])) {
-          a.href += "azerite-essence-power/" + data["power_ids"][key.split(" +")[0]];
-        }
-
-      } else if (data.hasOwnProperty("item_ids") && data["item_ids"].hasOwnProperty(key)) {
+      if (data.hasOwnProperty("item_ids") && data["item_ids"].hasOwnProperty(key)) {
         a.href += "item=" + data["item_ids"][key] + "/" + slugify(key);
 
         if (data.hasOwnProperty("class_id") && data.hasOwnProperty("used_azerite_traits_per_item")) {
@@ -817,27 +1063,24 @@ function bloodmallet_chart_import() {
           }
         }
         a.href += "&ilvl=" + ilvl;
-      } else if (data.hasOwnProperty("spell_ids") && (data["spell_ids"].hasOwnProperty(key))) {
-
-        // special handling
-        if (state.data_type === "corruptions") {
-          let corruption_name = key;
-          a.href += "spell=" + data["spell_ids"][corruption_name] + '/' + slugify(key);
-        } else {
-          a.href += "spell=" + data["spell_ids"][key] + '/' + slugify(key);
+      } else if (data.hasOwnProperty("spell_ids") && data["spell_ids"].hasOwnProperty(key)) {
+        a.href += "spell=" + data["spell_ids"][key] + '/' + slugify(key);
+      }
+      try {
+        a.appendChild(document.createTextNode(data["translations"][key][language_table[state.language]]));
+      } catch (error) {
+        try {
+          a.appendChild(document.createTextNode(data["languages"][key][language_table[state.language]]));
+        } catch (error) {
+          a.appendChild(document.createTextNode(key));
+          console.log("Bloodmallet charts: Translation for " + key + " wasn't found. Please help improving the reasource at bloodmallet.com.");
         }
       }
 
-      try {
-        a.appendChild(document.createTextNode(data.languages[key][language_table[state.language]]));
-      } catch (error) {
-        a.appendChild(document.createTextNode(key));
-        console.log("Bloodmallet charts: Translation for " + key + " wasn't found. Please help improving the reasource at bloodmallet.com.");
-      }
-
       return a.outerHTML;
+    }
 
-    } else if (state.tooltip_engine == "wowdb") {
+    if (state.tooltip_engine == "wowdb") {
       let a = document.createElement('a');
       a.href = "http://www.wowdb.com/";
       try {
@@ -867,35 +1110,32 @@ function bloodmallet_chart_import() {
             a.href += ":" + trait["id"];
           }
         }
-      } else {
-        try {
-          if (state.data_type === "essence_combinations") {
-            a.href += "spells/" + data["spell_ids"][key.split(" +")[0]];
-          } else if (state.data_type === "corruptions" && state.corruption_representation === "dps/rating") {
-            let corruption_name = key;
-            a.href += "spells/" + data["spell_ids"][corruption_name];
-          } else if (state.data_type === "corruptions" && state.corruption_representation === "dps") {
-            a.href += "spells/" + data["spell_ids"][key]["1"];
-          } else {
-            a.href += "spells/" + data["spell_ids"][key]; // spell id
-          }
-        } catch (error) {
-          if (debug) {
-            console.log(error);
-            console.log("We're probably looking at an item.");
-          }
+      }
+
+      try {
+        a.href += "spells/" + data["spell_ids"][key]; // spell id
+      } catch (error) {
+        if (debug) {
+          console.log(error);
+          console.log("We're probably looking at an item.");
         }
       }
 
-
       a.dataset.tooltipHref = a.href;
 
+      let translation = undefined;
       try {
-        a.appendChild(document.createTextNode(data["languages"][key][language_table[state.language]]));
+        translation = document.createTextNode(data["translations"][key][language_table[state.language]])
       } catch (error) {
-        a.appendChild(document.createTextNode(key));
-        console.log("Bloodmallet charts: Translation for " + key + " wasn't found. Please help improving the reasource at bloodmallet.com.");
+        try {
+          translation = document.createTextNode(data["languages"][key][language_table[state.language]])
+        } catch (error) {
+          translation = key;
+          console.log("Bloodmallet charts: Translation for " + key + " wasn't found. Please help improving the reasource at bloodmallet.com.");
+        }
       }
+
+      a.appendChild(document.createTextNode(translation));
 
       return a.outerHTML;
     }
@@ -907,7 +1147,7 @@ function bloodmallet_chart_import() {
    * @param {int} id
    */
   function requirements_error(chart) {
-    chart.setTitle({ text: "Wrong chart setup" }, { text: "Missing 'data-wow-class' or 'data-wow-spec'. See <a href=\"https://github.com/Bloodmallet/bloodmallet.github.io/wiki/How-to-import-charts-or-data\">wiki</a>" });
+    chart.setTitle({ text: "Wrong chart setup" }, { text: "Missing 'data-chart-id', 'data-wow-class' or 'data-wow-spec'. See <a href=\"https://github.com/Bloodmallet/bloodmallet.github.io/wiki/How-to-import-charts-or-data\">wiki</a>" });
   }
 
   /**
@@ -924,13 +1164,161 @@ function bloodmallet_chart_import() {
   }
 
   /**
-   * Updates the style of the chart
+   * Returns styled chart
    */
   function update_chart_style(state) {
     if (debug) {
       console.log("update_chart_style");
     }
     if (state.chart_engine == "highcharts" || state.chart_engine == "highcharts_old") {
+
+      if (state.data_type === "secondary_distributions") {
+        return {
+          chart: {
+            renderTo: 'scatter_plot_chart',
+            type: "scatter3d",
+            backgroundColor: null,
+            animation: false,
+            height: 800,
+            width: 800,
+            options3d: {
+              enabled: true,
+              alpha: 10,
+              beta: 30,
+              depth: 800,
+              fitToPlot: false,
+            }
+          },
+          legend: {
+            enabled: true,
+            backgroundColor: state.background_color,
+            borderColor: state.font_color,
+            borderWidth: 1,
+            align: "right",
+            verticalAlign: "middle",
+            layout: "vertical",
+            itemStyle: { "color": state.font_color },
+            itemHoverStyle: { "color": state.font_color }
+          },
+          plotOptions: {
+            series: {
+              dataLabels: {
+                allowOverlap: true,
+                style: {
+                  color: state.font_color,
+                  fontSize: state.font_size,
+                  fontWeight: "400",
+                  textOutline: ""
+                }
+              },
+              events: {
+                legendItemClick: function () {
+                  return false;
+                }
+              },
+            },
+          },
+          series: [],
+          title: {
+            text: "", //"Title placeholder",
+            useHTML: true,
+            style: {
+              color: state.font_color
+            }
+          },
+          subtitle: {
+            text: "",
+            useHTML: true,
+            style: {
+              color: state.font_color,
+              fontSize: state.font_size
+            }
+          },
+          tooltip: {
+            headerFormat: '',
+            pointFormatter: function () {
+              return '<table class="">\
+                <thead>\
+                  <tr>\
+                    <th scope="col"></th>\
+                    <th scope="col">Absolute</th>\
+                    <th scope="col">Relative</th>\
+                  </tr>\
+                </thead>\
+                <tbody>\
+                  <tr>\
+                    <th scope="row">DPS</th>\
+                    <td>' + Intl.NumberFormat().format(this.dps) + '</td>\
+                    <td>' + Math.round(this.dps / this.dps_max * 10000) / 100 + '%</td>\
+                  </tr>\
+                  <tr>\
+                    <th scope="row">Crit</th>\
+                    <td>' + Intl.NumberFormat().format(this.stat_crit) + '</td>\
+                    <td>' + this.name.split("_")[0] + '%</td>\
+                  </tr>\
+                  <tr>\
+                    <th scope="row">Haste</th>\
+                    <td>' + Intl.NumberFormat().format(this.stat_haste) + '</td>\
+                    <td>' + this.name.split("_")[1] + '%</td>\
+                  </tr>\
+                  <tr>\
+                    <th scope="row">Mastery</th>\
+                    <td>' + Intl.NumberFormat().format(this.stat_mastery) + '</td>\
+                    <td>' + this.name.split("_")[2] + '%</td>\
+                  </tr>\
+                  <tr>\
+                    <th scope="row">Versatility</th>\
+                    <td>' + Intl.NumberFormat().format(this.stat_vers) + '</td>\
+                    <td>' + this.name.split("_")[3] + '%</td>\
+                  </tr>\
+                </tbody>\
+              </table>';
+            },
+            useHTML: true,
+            borderColor: state.background_color,
+          },
+          xAxis: {
+            min: 0,
+            max: 80,
+            tickInterval: 20,
+            startOnTick: true,
+            endOnTick: true,
+            title: "",
+            labels: {
+              enabled: false,
+            },
+            gridLineWidth: 1,
+            gridLineColor: state.axis_color,
+          },
+          yAxis: {
+            min: -10,
+            max: 70,
+            tickInterval: 20,
+            startOnTick: true,
+            endOnTick: true,
+            title: "",
+            labels: {
+              enabled: false,
+            },
+            gridLineWidth: 1,
+            gridLineColor: state.axis_color,
+          },
+          zAxis: {
+            min: 10,
+            max: 90,
+            tickInterval: 20,
+            startOnTick: true,
+            endOnTick: true,
+            title: "",
+            labels: {
+              enabled: false,
+            },
+            reversed: true,
+            gridLineWidth: 1,
+            gridLineColor: state.axis_color,
+          },
+        }
+      }
 
       let background_color = state.background_color;
       let axis_color = state.axis_color;
@@ -947,7 +1335,7 @@ function bloodmallet_chart_import() {
         colors: bar_colors,
         credits: {
           href: "https://bloodmallet.com/",
-          text: "bloodmallet.com",
+          text: "bloodmallet",
           style: {
             fontSize: font_size
           }
@@ -981,11 +1369,6 @@ function bloodmallet_chart_import() {
           symbolRadius: 0
         },
         plotOptions: {
-          bar: {
-            dataLabels: {
-              enabled: false,
-            },
-          },
           series: {
             stacking: "normal",
             borderColor: default_background_color,
@@ -998,8 +1381,7 @@ function bloodmallet_chart_import() {
             }
           }
         },
-        series: [
-        ],
+        series: [],
         title: {
           text: "Loading data...", //"Title placeholder",
           useHTML: true,
@@ -1035,13 +1417,7 @@ function bloodmallet_chart_import() {
           }
         },
         xAxis: {
-          categories: [
-            "",
-            "",
-            "",
-            "",
-            "",
-          ],
+          categories: [],
           labels: {
             useHTML: true,
             style: {
@@ -1054,6 +1430,7 @@ function bloodmallet_chart_import() {
           lineColor: default_axis_color,
           tickColor: default_axis_color
         },
+        // two yAxis, to "double" the description
         yAxis: [{
           labels: {
             //enabled: true,
@@ -1134,7 +1511,7 @@ function bloodmallet_chart_import() {
         let container = document.createElement('div');
         container.style.margin = '-4px -7px -7px -7px';
         container.style.padding = '3px 3px 6px 3px';
-        container.style.backgroundColor = background_color;
+        container.style.backgroundColor = (background_color !== "transparent") ? background_color : default_background_color;
         if (state.chart_engine === "highcharts_old") {
           container.style.margin = '-7px';
         }
@@ -1159,7 +1536,9 @@ function bloodmallet_chart_import() {
             block_span.style.marginLeft = '9px';
             block_span.style.borderLeft = '9px solid ' + this.points[i].series.color;
             block_span.style.paddingLeft = '4px';
-            block_span.innerHtml = this.points[i].series.name;
+            if (Number.isInteger(this.points[i].series.name)) {
+              block_span.appendChild(document.createTextNode(this.points[i].series.name + ":"));
+            }
 
             point_div.appendChild(document.createTextNode('\u00A0\u00A0' + Intl.NumberFormat().format(cumulative_amount)));
           }
@@ -1167,7 +1546,7 @@ function bloodmallet_chart_import() {
 
         return container.outerHTML;
       };
-      styled_chart.tooltip.backgroundColor = background_color;
+      styled_chart.tooltip.backgroundColor = (background_color !== "transparent") ? background_color : default_background_color;
       styled_chart.tooltip.borderColor = axis_color;
       styled_chart.tooltip.style.color = font_color;
 
