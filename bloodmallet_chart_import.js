@@ -121,7 +121,8 @@ function bloodmallet_chart_import() {
     "it": "it_IT",
     "ko": "ko_KR",
     "pt": "pt_BR",
-    "ru": "ru_RU"
+    "ru": "ru_RU",
+    "zh-hans": "cn_CN"
   };
 
   const covenants = {
@@ -142,6 +143,19 @@ function bloodmallet_chart_import() {
       "color": "#abd473"
     }
   };
+
+  /**
+   * Conduits have ranks...and those are mapped to itemlevels. Players see their itemlevels ingame, not the rank
+   */
+  const rank_to_ilevel = {
+    1: 145,
+    2: 158,
+    3: 171,
+    4: 184,
+    5: 200,
+    6: 213,
+    7: 226
+  }
 
   /**
    *
@@ -416,11 +430,7 @@ function bloodmallet_chart_import() {
       console.log("update_chart");
     }
 
-    let chart_id = state.chart_id;
     let data_type = state.data_type;
-    let fight_style = state.fight_style;
-    let wow_class = state.wow_class;
-    let wow_spec = state.wow_spec;
     let limit = state.limit;
     let chart_engine = state.chart_engine;
 
@@ -461,7 +471,7 @@ function bloodmallet_chart_import() {
     }
 
     const data = spec_data;
-
+    console.log(data);
     // Azerite Trait stacking uses the second sorted data key list
     let dps_ordered_keys;
     let baseline_dps;
@@ -506,6 +516,8 @@ function bloodmallet_chart_import() {
       }
       if (["races", "talents"].includes(data_type)) {
         baseline_dps = 0;
+      } else if (["soulbinds"].includes(data_type) && state.chart_mode === "nodes") {
+        baseline_dps = data["data"]["baseline"][state.covenant];
       } else if (["legendaries", "soulbind_nodes", "soulbinds", "covenants"].includes(data_type)) {
         baseline_dps = data["data"]["baseline"];
       } else {
@@ -625,6 +637,8 @@ function bloodmallet_chart_import() {
           simulation_step_clean = simulation_step.split("_")[1];
         } else if (data_type === "azerite_traits_stacking") {
           simulation_step_clean = simulation_step.split("_")[0];
+        } else if (data_type === "soulbinds" && state.chart_mode === "nodes") {
+          simulation_step_clean = rank_to_ilevel[simulation_step_clean];
         }
 
         chart.addSeries({
@@ -668,7 +682,7 @@ function bloodmallet_chart_import() {
 
         chart.addSeries({
           data: dps_array,
-          name: get_translated_name(covenant, data),
+          name: get_translated_name(covenant, data, state),
           showInLegend: true,
           color: covenants[covenant]["color"]
         }, false);
@@ -1103,25 +1117,17 @@ function bloodmallet_chart_import() {
 
     // fallback
     if (state.tooltip_engine != "wowhead" && state.tooltip_engine != "wowdb") {
-      try {
-        return data["translations"][key][language_table[state.language]];
-      } catch (error) {
-        return data["languages"][key][language_table[state.language]];
-      }
+      return get_translated_name(key, data, state);
     }
 
     // races don't have links/tooltips
     if (["races"].includes(state.data_type)) {
-      try {
-        return data["translations"][key][language_table[state.language]];
-      } catch (error) {
-        return data["languages"][key][language_table[state.language]];
-      }
+      return get_translated_name(key, data, state);
     }
 
     if (["soulbinds"].includes(state.data_type) && state.chart_mode === "soulbinds") {
       let link = '<a href="#' + key + '">';
-      link += data["translations"][key][language_table[state.language]];
+      link += get_translated_name(key, data, state);
       link += '</a>';
       return link;
     }
@@ -1160,16 +1166,7 @@ function bloodmallet_chart_import() {
       if (state.data_type === "talents") {
         a.appendChild(document.createTextNode(key[1]));
       } else {
-        try {
-          a.appendChild(document.createTextNode(data["translations"][key][language_table[state.language]]));
-        } catch (error) {
-          try {
-            a.appendChild(document.createTextNode(data["languages"][key][language_table[state.language]]));
-          } catch (error) {
-            a.appendChild(document.createTextNode(key));
-            // console.log("Bloodmallet charts: Translation for " + key + " wasn't found. Please help improving the reasource at bloodmallet.com.");
-          }
-        }
+        a.appendChild(document.createTextNode(get_translated_name(key, data, state)));
       }
 
       return a.outerHTML;
@@ -1230,16 +1227,7 @@ function bloodmallet_chart_import() {
       if (state.data_type === "talents") {
         translation = key[1];
       } else {
-        try {
-          translation = data["translations"][key][language_table[state.language]];
-        } catch (error) {
-          try {
-            translation = data["languages"][key][language_table[state.language]];
-          } catch (error) {
-            translation = key;
-            //console.log("Bloodmallet charts: Translation for " + key + " wasn't found. Please help improving the reasource at bloodmallet.com.");
-          }
-        }
+        translation = get_translated_name(key, data, state);
       }
 
       a.appendChild(document.createTextNode(translation));
@@ -1703,7 +1691,7 @@ function bloodmallet_chart_import() {
     }
 
     // value switch
-    if (["trinkets", "covenants", "conduits", "soulbind_nodes"].includes(state.data_type)) {
+    if (["trinkets", "covenants", "conduits", "soulbind_nodes", "legendaries", "soulbinds"].includes(state.data_type)) {
       document.getElementById("value_style_switch").hidden = false;
     }
 
@@ -1803,7 +1791,7 @@ function bloodmallet_chart_import() {
         const id = data["covenant_ids"][covenant];
 
         let headline = document.createElement("h3");
-        headline.appendChild(document.createTextNode(get_translated_name(covenant, data)));
+        headline.appendChild(document.createTextNode(get_translated_name(covenant, data, state)));
         parent.appendChild(headline);
 
         let order = 0;
@@ -1812,7 +1800,7 @@ function bloodmallet_chart_import() {
             order += 1;
 
             let s_headline = document.createElement("h4");
-            s_headline.appendChild(document.createTextNode(order + ". " + get_translated_name(soulbind, data)));
+            s_headline.appendChild(document.createTextNode(order + ". " + get_translated_name(soulbind, data, state)));
             s_headline.classList += "ml-3";
             s_headline.id = soulbind;
             parent.appendChild(s_headline);
@@ -1827,7 +1815,7 @@ function bloodmallet_chart_import() {
                 if (data.hasOwnProperty("spell_ids") && data["spell_ids"].hasOwnProperty(node)) {
                   a.href += "spell=" + data["spell_ids"][node] + '/' + slugify(node);
                 }
-                a.appendChild(document.createTextNode(data["translations"][node][language_table[state.language]]));
+                a.appendChild(document.createTextNode(get_translated_name(node, data, state)));
                 collect.push(a);
               }
             }
@@ -2023,7 +2011,7 @@ function bloodmallet_chart_import() {
     s += data["talent_data"][row_column.slice(0, 1)][row_column.slice(1, 2)]["spell_id"];
     s += "\"";
     s += ">";
-    s += get_translated_name(name, data);
+    s += get_translated_name(name, data, state);
     s += "</a>";
 
     return s;
@@ -2033,26 +2021,14 @@ function bloodmallet_chart_import() {
    * Get the translation of a name (item, trait, race) from the data file
    * @param {string} name
    */
-  function get_translated_name(name, data) {
+  function get_translated_name(name, data, state) {
     if (debug) {
       console.log("get_translated_name " + name);
     }
 
-    let language_table = {
-      "zh-hans": "cn_CN",
-      "en": "en_US",
-      "de": "de_DE",
-      "es": "es_ES",
-      "fr": "fr_FR",
-      "it": "it_IT",
-      "ko": "ko_KR",
-      "pt": "pt_BR",
-      "ru": "ru_RU"
-    }
-
     let return_name = "";
     try {
-      return_name = data["translations"][name][language_table[language]];
+      return_name = data["translations"][name][language_table[state.language]];
     } catch (error) {
       if (debug) {
         console.log(`No translation for ${name} found.`);
@@ -2063,6 +2039,10 @@ function bloodmallet_chart_import() {
 
     if (debug) {
       console.log("Translated name: " + return_name);
+    }
+
+    if (return_name === undefined) {
+      return_name = name;
     }
 
     return return_name;
