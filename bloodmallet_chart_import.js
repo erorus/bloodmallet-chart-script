@@ -73,13 +73,12 @@ function bloodmallet_chart_import() {
 
   /**
    * options:
-   *   trinkets - default
-   *   races
-   *   azerite_items_chest
-   *   azerite_items_head
-   *   azerite_items_shoulders
-   *   azerite_traits_itemlevel
-   *   azerite_traits_stacking
+   *   - trinkets - default
+   *   - races
+   *   - conduits
+   *   - soul_binds
+   *   - legendaries
+   *   - domination_shards
    */
   const default_data_type = "trinkets";
 
@@ -155,7 +154,11 @@ function bloodmallet_chart_import() {
     4: 184,
     5: 200,
     6: 213,
-    7: 226
+    7: 226,
+    8: 239,
+    9: 252,
+    10: 265,
+    11: 278,
   }
 
   /**
@@ -375,6 +378,7 @@ function bloodmallet_chart_import() {
     } catch (error) {
       if (debug) {
         console.log("Data needs to be loaded.");
+        console.log(error);
       }
     }
 
@@ -451,7 +455,7 @@ function bloodmallet_chart_import() {
       return;
     }
 
-    if (spec_data["error"] === true) {
+    if (spec_data["error"] === true || spec_data["status"] === "error") {
       return simulation_error(html_element, spec_data);
     } else {
       wow_class = spec_data['simc_settings']['class'];
@@ -523,7 +527,7 @@ function bloodmallet_chart_import() {
         baseline_dps = 0;
       } else if (["soulbinds"].includes(data_type) && state.chart_mode === "nodes") {
         baseline_dps = data["data"]["baseline"][state.covenant];
-      } else if (["legendaries", "soulbind_nodes", "soulbinds", "covenants"].includes(data_type)) {
+      } else if (["legendaries", "soulbind_nodes", "soulbinds", "covenants", "domination_shards"].includes(data_type)) {
         baseline_dps = data["data"]["baseline"];
       } else {
         baseline_dps = data["data"]["baseline"][data["simulated_steps"][data["simulated_steps"].length - 1]];
@@ -536,12 +540,7 @@ function bloodmallet_chart_import() {
     }
 
     let simulated_steps = [];
-    if (data_type == "azerite_traits_stacking") {
-      let base_ilevel = data["simulated_steps"][0].replace("1_", "");
-      simulated_steps.push("3_" + base_ilevel);
-      simulated_steps.push("2_" + base_ilevel);
-      simulated_steps.push("1_" + base_ilevel);
-    } else if (data_type == "soulbinds" && state.chart_mode === "soulbinds") {
+    if (data_type == "soulbinds" && state.chart_mode === "soulbinds") {
       simulated_steps = undefined;
     } else {
       simulated_steps = data["simulated_steps"];
@@ -687,7 +686,7 @@ function bloodmallet_chart_import() {
         }, false);
 
       }
-    } else if (["legendaries", "soulbind_nodes", "covenants"].includes(data_type)) {
+    } else if (["legendaries", "soulbind_nodes", "covenants", "domination_shards"].includes(data_type)) {
       var dps_array = [];
 
       for (let i = 0; i < dps_ordered_keys.length; i++) {
@@ -753,7 +752,7 @@ function bloodmallet_chart_import() {
     // add new legend title
     if (["trinkets", "azerite_items_chest", "azerite_items_head", "azerite_items_shoulders", "azerite_traits_itemlevel"].indexOf(data_type) > -1) {
       chart.legend.title.attr({ text: "Itemlevel" });
-    } else if (data_type === "races") {
+    } else if (data_type === "races" || data_type === "domination_shards") {
       chart.legend.title.attr({ text: "" });
     } else if (data_type === "azerite_traits_stacking") {
       chart.legend.title.attr({ text: "Trait count" });
@@ -878,55 +877,62 @@ function bloodmallet_chart_import() {
     let element = html_element;
     element.innerHTML = "";
 
-    let information = document.createElement('p');
-    information.innerText = "An error occured during simulation.";
-    element.appendChild(information);
+    if (error_response["status"] === "error") {
+      let information = document.createElement('p');
+      information.innerText = error_response["message"];
+      element.appendChild(information);
+    } else {
+      let information = document.createElement('p');
+      information.innerText = "An error occured during simulation.";
+      element.appendChild(information);
 
-    let list = document.createElement('ul');
+      let list = document.createElement('ul');
 
-    let title = document.createElement('li');
-    title.textContent = "Title: " + (error_response["title"] ? error_response["title"] : '~');
-    list.appendChild(title);
+      let title = document.createElement('li');
+      title.textContent = "Title: " + (error_response["title"] ? error_response["title"] : '~');
+      list.appendChild(title);
 
-    let spec = document.createElement('li');
-    spec.textContent = "Spec: " + error_response["wow_spec"] + " " + error_response["wow_class"];
-    list.appendChild(spec);
+      let spec = document.createElement('li');
+      spec.textContent = "Spec: " + error_response["wow_spec"] + " " + error_response["wow_class"];
+      list.appendChild(spec);
 
-    let type = document.createElement('li');
-    type.textContent = "Type: " + error_response["simulation_type"];
-    list.appendChild(type);
+      let type = document.createElement('li');
+      type.textContent = "Type: " + error_response["simulation_type"];
+      list.appendChild(type);
 
-    let fight_style = document.createElement('li');
-    fight_style.textContent = "Fight style: " + error_response["fight_style"];
-    list.appendChild(fight_style);
+      let fight_style = document.createElement('li');
+      fight_style.textContent = "Fight style: " + error_response["fight_style"];
+      list.appendChild(fight_style);
 
-    let simulation_id = document.createElement('li');
-    simulation_id.textContent = "ID: " + error_response["id"];
-    list.appendChild(simulation_id);
+      let simulation_id = document.createElement('li');
+      simulation_id.textContent = "ID: " + error_response["id"];
+      list.appendChild(simulation_id);
 
-    let custom_profile = document.createElement('li');
-    custom_profile.textContent = "Custom profile:";
-    list.appendChild(custom_profile);
-    custom_profile.appendChild(document.createElement('br'));
-    let profile = document.createElement('textarea');
-    profile.readOnly = true;
-    profile.value = error_response["custom_profile"];
-    profile.placeholder = "No custom profile";
-    profile.style.width = "100%";
-    custom_profile.appendChild(profile);
+      let custom_profile = document.createElement('li');
+      custom_profile.textContent = "Custom profile:";
+      list.appendChild(custom_profile);
+      custom_profile.appendChild(document.createElement('br'));
+      let profile = document.createElement('textarea');
+      profile.readOnly = true;
+      profile.value = error_response["custom_profile"];
+      profile.placeholder = "No custom profile";
+      profile.style.width = "100%";
+      custom_profile.appendChild(profile);
 
-    let log_item = document.createElement('li');
-    log_item.textContent = "Log:";
-    list.appendChild(log_item);
-    log_item.appendChild(document.createElement('br'));
-    let log = document.createElement('textarea');
-    log.readOnly = true;
-    log.value = error_response["log"];
-    log.placeholder = "No log available";
-    log.style.width = "100%";
-    log_item.appendChild(log);
+      let log_item = document.createElement('li');
+      log_item.textContent = "Log:";
+      list.appendChild(log_item);
+      log_item.appendChild(document.createElement('br'));
+      let log = document.createElement('textarea');
+      log.readOnly = true;
+      log.value = error_response["log"];
+      log.placeholder = "No log available";
+      log.style.width = "100%";
+      log_item.appendChild(log);
 
-    element.appendChild(list);
+      element.appendChild(list);
+    }
+
   }
 
   function get_styled_value(state, dps, baseline_dps) {
@@ -1283,14 +1289,16 @@ function bloodmallet_chart_import() {
             a.href += ":" + trait["id"];
           }
         }
-        let ilvl = data["simulated_steps"][data["simulated_steps"].length - 1];
-        // fix special case of azerite items "1_340"
-        if (typeof ilvl === 'string') {
-          if (ilvl.indexOf("_") > -1) {
-            ilvl = ilvl.split("_")[1];
+        if (data["simulated_steps"] !== undefined) {
+          let ilvl = data["simulated_steps"][data["simulated_steps"].length - 1];
+          // fix special case of azerite items "1_340"
+          if (typeof ilvl === 'string') {
+            if (ilvl.indexOf("_") > -1) {
+              ilvl = ilvl.split("_")[1];
+            }
           }
+          a.href += "&ilvl=" + ilvl;
         }
-        a.href += "&ilvl=" + ilvl;
       } else if (data.hasOwnProperty("spell_ids") && data["spell_ids"].hasOwnProperty(key)) {
         a.href += "spell=" + data["spell_ids"][key] + '/' + slugify(key);
       } else if (state.data_type === "talents") {
