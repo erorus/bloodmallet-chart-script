@@ -82,7 +82,6 @@ function bloodmallet_chart_import() {
    */
   const default_data_type = "trinkets";
 
-  const default_azerite_tier = "all"
   const default_conduit_rank = "7";
   const default_renown = "35";
   const default_covenant = "Kyrian";
@@ -167,6 +166,9 @@ function bloodmallet_chart_import() {
     "blood": "#c41f3b"
   }
 
+  const absolute_damage_per_second = "\u0394 Damage per second";
+  const relative_damage_per_second = "% Damage per second";
+
 
   /**
    *
@@ -212,7 +214,6 @@ function bloodmallet_chart_import() {
           wow_class: undefined,
           wow_spec: undefined,
           data_type: default_data_type,
-          azerite_tier: default_azerite_tier,
           conduit_rank: default_conduit_rank,
           fight_style: default_fight_style,
           chart_mode: default_chart_mode,
@@ -282,9 +283,6 @@ function bloodmallet_chart_import() {
         }
         if (html_element.getAttribute("data-renown")) {
           state.renown = html_element.getAttribute("data-renown");
-        }
-        if (html_element.getAttribute("data-azerite-tier")) {
-          state.azerite_tier = html_element.getAttribute("data-azerite-tier");
         }
         if (html_element.getAttribute("data-conduit-rank")) {
           state.conduit_rank = html_element.getAttribute("data-conduit-rank");
@@ -391,11 +389,6 @@ function bloodmallet_chart_import() {
 
     let data_group = data_type;
 
-    // partial fix to link to get data
-    if (data_group.indexOf("azerite") > -1) {
-      data_group = "azerite_traits";
-    }
-
     let data_name = fight_style;
     data_name += "/" + wow_class;
     data_name += "/" + wow_spec;
@@ -478,72 +471,43 @@ function bloodmallet_chart_import() {
       return update_secondary_distribution_chart(state, html_element, chart);
     }
 
-    if (spec_data['data_type'] === 'azerite_traits') {
-      if (data_type.indexOf('azerite_items') === -1) {
-        data_type = "azerite_traits_stacking";
-      }
-    } else {
-      data_type = spec_data['data_type'];
-    }
+    data_type = spec_data['data_type'];
 
     const data = spec_data;
 
-    // Azerite Trait stacking uses the second sorted data key list
     let dps_ordered_keys;
     let baseline_dps;
-    if (data_type.indexOf("azerite_traits") > -1) {
-
-      if (data_type === "azerite_traits_stacking") {
-
-        if (state.azerite_tier === "all") {
-          dps_ordered_keys = data["sorted_data_keys_2"].slice(0, limit);
-        } else if (state.azerite_tier === "1" || state.azerite_tier === "3") {
-          dps_ordered_keys = data["sorted_azerite_tier_3_trait_stacking"].slice(0, limit);
-        } else if (state.azerite_tier === "2") {
-          dps_ordered_keys = data["sorted_azerite_tier_2_trait_stacking"].slice(0, limit);
-        }
-        baseline_dps = data["data"]["baseline"][data["simulated_steps"][0]];
-
-      } else if (data_type === "azerite_traits_itemlevel") {
-
-        if (state.azerite_tier === "all") {
-          dps_ordered_keys = data["sorted_data_keys"].slice(0, limit);
-        } else if (state.azerite_tier === "1" || state.azerite_tier === "3") {
-          dps_ordered_keys = data["sorted_azerite_tier_3_itemlevel"].slice(0, limit);
-        } else if (state.azerite_tier === "2") {
-          dps_ordered_keys = data["sorted_azerite_tier_2_itemlevel"].slice(0, limit);
-        }
-        baseline_dps = data["data"]["baseline"][data["simulated_steps"][data["simulated_steps"].length - 1]];
-
+    let other_baselines = {};
+    if (data_type === "soulbinds") {
+      if (state.chart_mode === "nodes") {
+        dps_ordered_keys = data["sorted_data_keys_" + slugify(state.covenant).replace("-", "_") + "_" + state.conduit_rank].slice(0, limit);
       } else {
-        console.log("Chart found, but unknown data-type detected.")
-        return;
+        dps_ordered_keys = data["sorted_data_keys"][state.conduit_rank].slice(0, limit);
       }
-
     } else {
-      if (data_type === "soulbinds") {
-        if (state.chart_mode === "nodes") {
-          dps_ordered_keys = data["sorted_data_keys_" + slugify(state.covenant).replace("-", "_") + "_" + state.conduit_rank].slice(0, limit);
-        } else {
-          dps_ordered_keys = data["sorted_data_keys"][state.conduit_rank].slice(0, limit);
-        }
-      } else {
-        dps_ordered_keys = data["sorted_data_keys"].slice(0, limit);
-      }
-      if (["races", "talents"].includes(data_type)) {
-        baseline_dps = 0;
-      } else if (["soulbinds"].includes(data_type) && state.chart_mode === "nodes") {
-        baseline_dps = data["data"]["baseline"][state.covenant];
-      } else if (["legendaries", "soulbind_nodes", "soulbinds", "covenants", "domination_shards"].includes(data_type)) {
-        baseline_dps = data["data"]["baseline"];
-      } else {
-        baseline_dps = data["data"]["baseline"][data["simulated_steps"][data["simulated_steps"].length - 1]];
+      dps_ordered_keys = data["sorted_data_keys"].slice(0, limit);
+    }
+    if (["races", "talents"].includes(data_type)) {
+      baseline_dps = 0;
+    } else if (["soulbinds"].includes(data_type) && state.chart_mode === "nodes") {
+      baseline_dps = data["data"]["baseline"][state.covenant];
+    } else if (["legendaries", "soulbind_nodes", "soulbinds", "covenants", "domination_shards"].includes(data_type)) {
+      baseline_dps = data["data"]["baseline"];
+    } else {
+      baseline_dps = data["data"]["baseline"][data["simulated_steps"][data["simulated_steps"].length - 1]];
+    }
+    // add other baseline profiles, e.g. covenant profiles for legendaries
+    for (let key of Object.keys(data["data"])) {
+      if (key[0] === "{" && key[key.length - 1] === "}") {
+        other_baselines[key] = data["data"][key];
       }
     }
+
 
     if (debug) {
       console.log(dps_ordered_keys);
       console.log("Baseline dps: " + baseline_dps);
+      console.log("other baseline dps: " + other_baselines);
     }
 
     let simulated_steps = [];
@@ -569,6 +533,10 @@ function bloodmallet_chart_import() {
         const ilevels = state.html_element.dataset.filterItemlevels.split(";");
         simulated_steps = simulated_steps.filter(element => ilevels.indexOf(element.toString()) === -1);
       }
+      // filter by availability of simulated_steps
+      dps_ordered_keys = dps_ordered_keys.filter(element =>
+        simulated_steps.some(step => data["data"][element][step] !== undefined)
+      );
       // Active - Passive
       if (state.html_element.dataset.filterActivePassive !== undefined) {
         const active_passives = state.html_element.dataset.filterActivePassive.split(";");
@@ -589,6 +557,20 @@ function bloodmallet_chart_import() {
         const sources = state.html_element.dataset.filterSources.split(";");
         dps_ordered_keys = dps_ordered_keys.filter(element => sources.indexOf(data["data_sources"][element]) === -1);
       }
+
+      // resort dps_ordered_keys
+      let tmp_list = [];
+      for (let trinket of dps_ordered_keys) {
+        let dps = undefined;
+        for (let step of simulated_steps) {
+          if (dps === undefined && data["data"][trinket][step] !== undefined) {
+            dps = data["data"][trinket][step];
+          }
+        }
+        tmp_list.push([trinket, dps]);
+      }
+      tmp_list.sort((trinket1, trinket2) => trinket1[1] <= trinket2[1]);
+      dps_ordered_keys = tmp_list.map(element => element[0]);
     }
 
     // set title and subtitle
@@ -619,7 +601,11 @@ function bloodmallet_chart_import() {
         });
     } else {
       category_list = dps_ordered_keys
-        .map(element => get_category_name(state, element, data));
+        .map(element => {
+          // correct names which use a specific different baseline
+          let shortened_name = element.indexOf("} ") > -1 ? element.slice(element.indexOf("} ") + 2, element.length) : element;
+          return get_category_name(state, shortened_name, data);
+        });
     }
 
     if (debug) {
@@ -679,11 +665,7 @@ function bloodmallet_chart_import() {
         }
 
         let simulation_step_clean = simulation_step;
-        if (["azerite_items_chest", "azerite_items_head", "azerite_items_shoulders", "azerite_traits_itemlevel"].indexOf(data_type) > -1) {
-          simulation_step_clean = simulation_step.split("_")[1];
-        } else if (data_type === "azerite_traits_stacking") {
-          simulation_step_clean = simulation_step.split("_")[0];
-        } else if (data_type === "soulbinds" && state.chart_mode === "nodes") {
+        if (data_type === "soulbinds" && state.chart_mode === "nodes") {
           simulation_step_clean = rank_to_ilevel[simulation_step_clean];
         }
 
@@ -693,7 +675,7 @@ function bloodmallet_chart_import() {
         }, false);
 
       }
-    } else if (["legendaries", "soulbind_nodes", "covenants"].includes(data_type)) {
+    } else if (["soulbind_nodes", "covenants"].includes(data_type)) {
       var dps_array = [];
 
       for (let i = 0; i < dps_ordered_keys.length; i++) {
@@ -710,6 +692,63 @@ function bloodmallet_chart_import() {
         showInLegend: false
       }, false);
 
+    } else if (["legendaries"].includes(data_type)) {
+      let dps_array = [];
+      let baseline_name = "{" + data["profile"]["character"]["covenant"] + "}";
+      let special_cases = {}
+      for (let special_case of Object.keys(other_baselines)) {
+        special_cases[special_case] = [];
+      }
+      special_cases[baseline_name] = [];
+
+      for (let dps_key of dps_ordered_keys) {
+        let tmp_baseline_dps = baseline_dps;
+
+        // special baseline profile
+        if (dps_key.indexOf("} ") > -1) {
+          let special_case_name = dps_key.slice(0, dps_key.indexOf("} ") + 1);
+          tmp_baseline_dps = other_baselines[special_case_name];
+          special_cases[special_case_name].push(get_styled_value(state, tmp_baseline_dps, baseline_dps));
+          for (let special_case of Object.keys(special_cases)) {
+            if (special_case !== special_case_name) {
+              special_cases[special_case].push(0);
+            }
+          }
+        } else {
+          for (let special_case of Object.keys(special_cases)) {
+            if (special_case !== baseline_name) {
+              special_cases[special_case].push(0);
+            }
+            else {
+              special_cases[special_case].push(get_styled_value(state, tmp_baseline_dps, tmp_baseline_dps));
+            }
+          }
+        }
+
+        let dps_key_values = data["data"][dps_key] - tmp_baseline_dps;
+        dps_array.push(get_styled_value(state, dps_key_values, tmp_baseline_dps));
+      }
+
+      chart.addSeries({
+        data: dps_array,
+        name: "Legendary effect",
+        showInLegend: true,
+        color: "#ff7d0a"
+      }, false);
+      let mapper = {
+        "night_fae": "Night Fae",
+        "necrolord": "Necrolord",
+        "venthyr": "Venthyr",
+        "kyrian": "Kyrian"
+      }
+      for (let special_case of Object.keys(special_cases)) {
+        chart.addSeries({
+          data: special_cases[special_case],
+          name: mapper[special_case.slice(1, special_case.length - 1)],
+          showInLegend: true,
+          color: covenants[mapper[special_case.slice(1, special_case.length - 1)]]["color"]
+        }, false);
+      }
     } else if (["domination_shards"].includes(data_type)) {
       for (let shard_type of Object.keys(domination_shard_colours)) {
 
@@ -758,6 +797,8 @@ function bloodmallet_chart_import() {
           color: covenants[covenant]["color"]
         }, false);
       }
+      chart.yAxis[0].options.title.text = absolute_damage_per_second;
+      chart.yAxis[1].options.title.text = absolute_damage_per_second;
 
     } else { // race simulations
       var dps_array = [];
@@ -782,12 +823,10 @@ function bloodmallet_chart_import() {
     }
 
     // add new legend title
-    if (["trinkets", "azerite_items_chest", "azerite_items_head", "azerite_items_shoulders", "azerite_traits_itemlevel"].indexOf(data_type) > -1) {
+    if (["trinkets"].indexOf(data_type) > -1) {
       chart.legend.title.attr({ text: "Itemlevel" });
     } else if (data_type === "races" || data_type === "domination_shards") {
       chart.legend.title.attr({ text: "" });
-    } else if (data_type === "azerite_traits_stacking") {
-      chart.legend.title.attr({ text: "Trait count" });
     } else if (data_type === "soulbinds" && state.chart_mode === "nodes") {
       chart.legend.title.attr({ text: "Conduit Rank" });
     }
@@ -967,6 +1006,13 @@ function bloodmallet_chart_import() {
 
   }
 
+  /**
+   * 
+   * @param {object} state 
+   * @param {float} dps 
+   * @param {float} baseline_dps 
+   * @returns based on value_style either absolute or relative gain
+   */
   function get_styled_value(state, dps, baseline_dps) {
     if (state.value_style === "absolute") {
       return dps;
@@ -1314,16 +1360,9 @@ function bloodmallet_chart_import() {
       if (data.hasOwnProperty("item_ids") && data["item_ids"].hasOwnProperty(key)) {
         a.href += "item=" + data["item_ids"][key] + "/" + slugify(key);
 
-        if (data.hasOwnProperty("class_id") && data.hasOwnProperty("used_azerite_traits_per_item")) {
-          a.href += "?azerite-powers=" + data["class_id"];
-          for (let i = 0; i < data["used_azerite_traits_per_item"][key].length; i++) {
-            const trait = data["used_azerite_traits_per_item"][key][i];
-            a.href += ":" + trait["id"];
-          }
-        }
         if (data["simulated_steps"] !== undefined) {
           let ilvl = data["simulated_steps"][data["simulated_steps"].length - 1];
-          // fix special case of azerite items "1_340"
+          // fix special case of effects named "XYZ 1_340"
           if (typeof ilvl === 'string') {
             if (ilvl.indexOf("_") > -1) {
               ilvl = ilvl.split("_")[1];
@@ -1361,24 +1400,16 @@ function bloodmallet_chart_import() {
         }
       }
 
-      // if it's an item try to add azerite ids and itemlevel
+      // if it's an item try to add itemlevel
       if (a.href.indexOf("items") > -1) {
         let ilvl = data["simulated_steps"][data["simulated_steps"].length - 1];
-        // fix special case of azerite items "1_340"
+        // fix special case of effects e.g. "XYZ 1_340"
         if (typeof ilvl === 'string') {
           if (ilvl.indexOf("_") > -1) {
             ilvl = ilvl.split("_")[1];
           }
         }
         a.href += "?itemLevel=" + ilvl;
-        if (data.hasOwnProperty("class_id") && data.hasOwnProperty("used_azerite_traits_per_item")) {
-          a.href += "&azerite=";
-          a.href += data["class_id"] + ":0";
-          for (let i = 0; i < data["used_azerite_traits_per_item"][key].length; i++) {
-            const trait = data["used_azerite_traits_per_item"][key][i];
-            a.href += ":" + trait["id"];
-          }
-        }
       }
 
       try {
@@ -1757,7 +1788,7 @@ function bloodmallet_chart_import() {
             }
           },
           title: {
-            text: state.value_style === "absolute" ? "\u0394 Damage per second" : "% Damage per second",
+            text: state.value_style === "absolute" ? absolute_damage_per_second : relative_damage_per_second,
             style: {
               color: default_axis_color
             }
@@ -1787,7 +1818,7 @@ function bloodmallet_chart_import() {
             }
           },
           title: {
-            text: state.value_style === "absolute" ? "\u0394 Damage per second" : "% Damage per second",
+            text: state.value_style === "absolute" ? absolute_damage_per_second : relative_damage_per_second,
             style: {
               color: default_axis_color
             }
@@ -1845,7 +1876,7 @@ function bloodmallet_chart_import() {
               block_span.appendChild(document.createTextNode(this.points[i].series.name + ":"));
             }
 
-            point_div.appendChild(document.createTextNode('\u00A0\u00A0' + Intl.NumberFormat().format(cumulative_amount) + (state.value_style === "relative" ? "%" : "")));
+            point_div.appendChild(document.createTextNode('\u00A0\u00A0' + Intl.NumberFormat().format(cumulative_amount) + (state.value_style === "relative" && !(state.data_type === "soulbinds" && state.chart_mode === "soulbinds") ? "%" : "")));
           }
         }
 
