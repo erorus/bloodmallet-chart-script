@@ -443,11 +443,13 @@ function bloodmallet_chart_import() {
     }
     state.data = spec_data;
 
-    chart.update({
-      accessibility: {
-        enable: false
-      }
-    }, false);
+    if (chart_engine != "highcharts_old") {
+      chart.update({
+        accessibility: {
+          enable: false
+        }
+      }, false);
+    }
 
     if (spec_data["error"] === true || spec_data["status"] === "error") {
       return simulation_error(html_element, spec_data);
@@ -481,14 +483,14 @@ function bloodmallet_chart_import() {
     let dps_ordered_keys;
     let baseline_dps;
     let other_baselines = {};
-    if (Object.keys(data).indexOf("sorted_data_keys") > -1 && data_type === "windfury_totem" && state.value_style === "absolute") {
+    if (Object.keys(data).indexOf("sorted_data_keys") > -1 && (["windfury_totem", "power_infusion"].indexOf(data_type) > -1) && state.value_style === "absolute") {
       dps_ordered_keys = data["sorted_data_keys_2"].slice(0, limit);
     } else if (Object.keys(data).indexOf("sorted_data_keys") > -1) {
       dps_ordered_keys = data["sorted_data_keys"].slice(0, limit);
     } else {
       dps_ordered_keys = Object.keys(data["data"]);
     }
-    if (["races", "talents", "soulbinds", "tier_set", "windfury_totem"].includes(data_type)) {
+    if (["races", "talents", "soulbinds", "tier_set", "windfury_totem", "power_infusion"].includes(data_type)) {
       baseline_dps = 0;
     } else if (["legendaries", "soulbind_nodes", "covenants", "domination_shards"].includes(data_type)) {
       baseline_dps = data["data"]["baseline"];
@@ -577,13 +579,18 @@ function bloodmallet_chart_import() {
       dps_ordered_keys = tmp_list.map(element => element[0]);
     }
 
+    let subtitle = data["subtitle"];
+    if (data_type === "power_infusion") {
+      subtitle += "<br/>* Spec APL doesn't support external PI. Fallback for set PI timings was used to generate data.";
+    }
+
     // set title and subtitle
     chart.setTitle(
       {
         text: data["title"]
       },
       {
-        text: data["subtitle"]
+        text: subtitle
       },
       false
     );
@@ -616,6 +623,17 @@ function bloodmallet_chart_import() {
           shortened_name = shortened_name.indexOf(" +") > -1 ? shortened_name.slice(0, shortened_name.indexOf(" +")) : shortened_name;
           return get_category_name(state, shortened_name, data);
         });
+    }
+
+    if (data_type === "power_infusion") {
+      // mark specs without PI support
+      category_list = category_list.map(element => {
+        if (Object.keys(spec_data).indexOf("profile_without_pi_support") > -1 && spec_data["profile_without_pi_support"].indexOf(element) > -1) {
+          return element + "*";
+        } else {
+          return element;
+        }
+      });
     }
 
     if (debug) {
@@ -759,7 +777,7 @@ function bloodmallet_chart_import() {
           color: covenants[mapper[special_case.slice(1, special_case.length - 1)]]["color"]
         }, false);
       }
-    } else if (["windfury_totem"].includes(data_type)) {
+    } else if (["windfury_totem", "power_infusion"].includes(data_type)) {
       let dps_array = [];
 
       let melee_spec_color_map = {
@@ -768,17 +786,29 @@ function bloodmallet_chart_import() {
         "Unholy Death Knight": "#c41f3b",
         "Havoc Demon Hunter": "#a330c9",
         "Vengeance Demon Hunter": "#a330c9",
+        "Balance Druid": "#ff7d0a",
         "Feral Druid": "#ff7d0a",
         "Guardian Druid": "#ff7d0a",
+        "Devastation Evoker": "#33937F",
+        "Beast_Mastery Hunter": "#abd473",
+        "Marksmanship Hunter": "#abd473",
         "Survival Hunter": "#abd473",
+        "Arcane Mage": "#69ccf0",
+        "Fire Mage": "#69ccf0",
+        "Frost Mage": "#69ccf0",
         "Brewmaster Monk": "#00ff96",
         "Windwalker Monk": "#00ff96",
         "Protection Paladin": "#f58cba",
         "Retribution Paladin": "#f58cba",
+        "Shadow Priest": "#ffffff",
         "Assassination Rogue": "#fff569",
         "Outlaw Rogue": "#fff569",
         "Subtlety Rogue": "#fff569",
+        "Elemental Shaman": "#0070de",
         "Enhancement Shaman": "#0070de",
+        "Affliction Warlock": "#9482c9",
+        "Demonology Warlock": "#9482c9",
+        "Destruction Warlock": "#9482c9",
         "Arms Warrior": "#c79c6e",
         "Fury Warrior": "#c79c6e",
         "Protection Warrior": "#c79c6e",
@@ -792,7 +822,7 @@ function bloodmallet_chart_import() {
 
       chart.addSeries({
         data: dps_array,
-        name: "Windfury Totem",
+        name: snake_case_to_title(data_type),
         showInLegend: false,
       }, false);
     } else if (["domination_shards"].includes(data_type)) {
@@ -1132,7 +1162,6 @@ function bloodmallet_chart_import() {
     wow_spec = spec_data['simc_settings']['spec'];
     fight_style = spec_data['simc_settings']['fight_style'];
 
-
     let styled_chart = update_chart_style(state);
 
     // create new chart without data
@@ -1460,7 +1489,7 @@ function bloodmallet_chart_import() {
     }
 
     // races don't have links/tooltips
-    if (["races", "windfury_totem"].includes(state.data_type)) {
+    if (["races", "windfury_totem", "power_infusion"].includes(state.data_type)) {
       return get_translated_name(key, data, state);
     }
 
@@ -2196,6 +2225,7 @@ function bloodmallet_chart_import() {
    * @returns true if current website is bloodmallet.com or a dev environment.
    */
   function is_bloodmallet_dot_com() {
+    return false;
     return ["bloodmallet.com", "127.0.0.1:8000"].includes(window.location.host);
   }
 
@@ -2213,7 +2243,7 @@ function bloodmallet_chart_import() {
     }
 
     // value switch
-    if (["trinkets", "covenants", "conduits", "soulbind_nodes", "windfury_totem"].includes(state.data_type)) {
+    if (["trinkets", "covenants", "conduits", "soulbind_nodes", "windfury_totem", "power_infusion"].includes(state.data_type)) {
       let element = document.getElementById("value_style_switch")
       if (element !== undefined && element !== null) {
         element.hidden = false;
@@ -2597,6 +2627,14 @@ function bloodmallet_chart_import() {
    */
   function title(string) {
     return string.split(" ").map(e => { return e[0].toUpperCase() + e.substring(1) }).join(" ");
+  }
+
+  /**
+   *
+   * @param {String} string
+   */
+  function snake_case_to_title(string) {
+    return string.split("_").map(e => { return e[0].toUpperCase() + e.substring(1) }).join(" ");
   }
 
   function create_talent_iframe(talent_string, title) {
